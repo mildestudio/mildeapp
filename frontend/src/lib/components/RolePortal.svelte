@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
 	import type { AuthUser, UserRole } from '$lib/auth/types';
+	import { loadWorkspaces } from '$lib/workspaces/state';
+	import type { WorkspaceSummary } from '$lib/workspaces/types';
 
 	let {
 		role,
@@ -10,6 +12,8 @@
 	}: { role: UserRole; title: string; description?: string } = $props();
 
 	let user = $state<AuthUser | null>(null);
+	let workspace = $state<WorkspaceSummary | null>(null);
+	let error = $state('');
 	let ready = $state(false);
 
 	onMount(async () => {
@@ -21,13 +25,23 @@
 			return;
 		}
 
-		if (storedUser.role !== role) {
-			await redirectByRole(storedUser.role);
-			return;
-		}
-
 		user = storedUser;
-		ready = true;
+		try {
+			workspace = await loadWorkspaces(token);
+			if (!workspace) {
+				error = 'This account is not a member of a workspace yet.';
+				ready = true;
+				return;
+			}
+			if (workspace.role !== role) {
+				await redirectByRole(workspace.role);
+				return;
+			}
+			ready = true;
+		} catch (cause: unknown) {
+			error = cause instanceof Error ? cause.message : 'Workspace access could not be loaded.';
+			ready = true;
+		}
 	});
 </script>
 
@@ -49,6 +63,8 @@
 
 	{#if !ready}
 		<div class="portal-state" role="status">Checking your session…</div>
+	{:else if error}
+		<p class="portal-state portal-error" role="alert">{error}</p>
 	{:else if user}
 		<section class="portal-content">
 			<p class="eyebrow">Milde Project Space</p>
@@ -60,8 +76,11 @@
 					<strong>{user.name}</strong>
 					<span>{user.email}</span>
 				</div>
-				<span class="role-label">{user.role}</span>
+				<span class="role-label">{workspace?.role ?? user.role}</span>
 			</div>
+			{#if role === 'OWNER' && workspace}
+				<a class="members-link" href="/owner/members">Team &amp; access</a>
+			{/if}
 			{#if description}
 				<p class="placeholder">{description}</p>
 			{/if}
@@ -222,6 +241,24 @@
 		color: #6d7068;
 		font-size: 14px;
 		line-height: 1.7;
+	}
+
+	.members-link {
+		display: inline-flex;
+		min-height: 44px;
+		align-items: center;
+		margin-top: 24px;
+		color: #344332;
+		font-size: 13px;
+		text-underline-offset: 4px;
+	}
+
+	.portal-error {
+		max-width: 560px;
+		margin: 0 auto;
+		padding-right: 22px;
+		padding-left: 22px;
+		color: #7b332c;
 	}
 
 	.portal-state {
