@@ -1,2 +1,37 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+
+:root {
+	font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	color: #252a24;
+	background: #f6f4ee;
+	font-optical-sizing: auto;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	min-width: 320px;
+	min-height: 100%;
+	background: #f6f4ee;
+}
+
+body {
+	min-width: 320px;
+	min-height: 100vh;
+	margin: 0;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+:focus-visible {
+	outline: 3px solid #8b694f;
+	outline-offset: 3px;
+}
