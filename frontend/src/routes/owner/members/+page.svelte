@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { apiRequest, ApiError } from '$lib/api';
 	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
-	import { loadWorkspaces } from '$lib/workspaces/state';
+	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
+	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
 	import type { WorkspaceSummary, WorkspaceMember, WorkspaceRole } from '$lib/workspaces/types';
 
 	const roles: WorkspaceRole[] = ['OWNER', 'EMPLOYEE', 'CLIENT', 'CONTRACTOR'];
 	let workspace = $state<WorkspaceSummary | null>(null);
+	let availableWorkspaces = $state<WorkspaceSummary[]>([]);
 	let members = $state<WorkspaceMember[]>([]);
 	let ready = $state(false);
 	let busyMemberId = $state<string | null>(null);
@@ -23,6 +26,7 @@
 
 		try {
 			workspace = await loadWorkspaces(token);
+			availableWorkspaces = get(workspaces);
 			if (!workspace) {
 				error = 'This account is not a member of a workspace.';
 				return;
@@ -38,6 +42,28 @@
 			ready = true;
 		}
 	});
+
+	async function changeWorkspace(nextWorkspace: WorkspaceSummary): Promise<void> {
+		if (nextWorkspace.role !== 'OWNER') {
+			selectWorkspace(nextWorkspace.id);
+			await redirectByRole(nextWorkspace.role);
+			return;
+		}
+		const token = getAccessToken();
+		if (!token) {
+			await logout();
+			return;
+		}
+		selectWorkspace(nextWorkspace.id);
+		workspace = nextWorkspace;
+		error = '';
+		notice = '';
+		try {
+			await refreshMembers(token, nextWorkspace.id);
+		} catch (cause: unknown) {
+			error = cause instanceof Error ? cause.message : 'Members could not be loaded for this workspace.';
+		}
+	}
 
 	async function refreshMembers(token: string, workspaceId: string): Promise<void> {
 		members = await apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`, { token });
@@ -106,6 +132,13 @@
 			<span class="brand-name">Milde <span>Project Space</span></span>
 		</a>
 		<div class="header-actions">
+			{#if workspace}
+				<WorkspaceSwitcher
+					selected={workspace}
+					options={availableWorkspaces}
+					onSelect={(nextWorkspace) => void changeWorkspace(nextWorkspace)}
+				/>
+			{/if}
 			<a href="/owner">Control Center</a>
 			<button type="button" onclick={() => void logout()}>Log out</button>
 		</div>
@@ -223,6 +256,9 @@
 		align-items: center;
 		gap: 12px;
 	}
+
+	.header-actions :global(.switcher-trigger) { min-height: 44px; }
+	.header-actions :global(.workspace-initial) { width: 30px; font-size: 14px; }
 
 	.header-actions a,
 	.header-actions button {
@@ -400,9 +436,11 @@
 
 	@media (max-width: 460px) {
 		.members-page { padding-right: 16px; padding-left: 16px; }
-		.page-header { min-height: 70px; }
+		.page-header { min-height: 70px; flex-wrap: wrap; padding: 10px 0; }
 		.brand { gap: 8px; }
-		.header-actions { gap: 6px; }
+		.header-actions { width: 100%; flex-wrap: wrap; gap: 6px; }
+		.header-actions :global(.switcher) { flex: 1 1 100%; }
+		.header-actions :global(.switcher-trigger) { width: 100%; }
 		.header-actions a, .header-actions button { padding: 0 8px; font-size: 11px; }
 		.content { margin-top: 34px; }
 	}

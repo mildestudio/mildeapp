@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
 	import type { AuthUser, UserRole } from '$lib/auth/types';
-	import { loadWorkspaces } from '$lib/workspaces/state';
+	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
 	import type { WorkspaceSummary } from '$lib/workspaces/types';
 
 	let {
@@ -13,6 +15,7 @@
 
 	let user = $state<AuthUser | null>(null);
 	let workspace = $state<WorkspaceSummary | null>(null);
+	let availableWorkspaces = $state<WorkspaceSummary[]>([]);
 	let error = $state('');
 	let ready = $state(false);
 
@@ -28,6 +31,7 @@
 		user = storedUser;
 		try {
 			workspace = await loadWorkspaces(token);
+			availableWorkspaces = get(workspaces);
 			if (!workspace) {
 				error = 'This account is not a member of a workspace yet.';
 				ready = true;
@@ -43,6 +47,12 @@
 			ready = true;
 		}
 	});
+
+	async function changeWorkspace(nextWorkspace: WorkspaceSummary): Promise<void> {
+		selectWorkspace(nextWorkspace.id);
+		workspace = nextWorkspace;
+		if (nextWorkspace.role !== role) await redirectByRole(nextWorkspace.role);
+	}
 </script>
 
 <svelte:head>
@@ -56,8 +66,15 @@
 			<span class="brand-mark" aria-hidden="true">M</span>
 			<span class="brand-name">Milde <span>Project Space</span></span>
 		</a>
-		{#if ready && user}
-			<button class="logout-button" type="button" onclick={() => void logout()}>Log out</button>
+		{#if ready && workspace && user}
+			<div class="header-tools">
+				<WorkspaceSwitcher
+					selected={workspace}
+					options={availableWorkspaces}
+					onSelect={(nextWorkspace) => void changeWorkspace(nextWorkspace)}
+				/>
+				<button class="logout-button" type="button" onclick={() => void logout()}>Log out</button>
+			</div>
 		{/if}
 	</header>
 
@@ -67,7 +84,7 @@
 		<p class="portal-state portal-error" role="alert">{error}</p>
 	{:else if user}
 		<section class="portal-content">
-			<p class="eyebrow">Milde Project Space</p>
+			<p class="eyebrow">{role === 'CLIENT' && workspace ? `${workspace.name} workspace` : 'Milde Project Space'}</p>
 			<h1>{title}</h1>
 			<p class="welcome">Welcome, {user.name}.</p>
 			<div class="identity-card">
@@ -101,6 +118,12 @@
 		align-items: center;
 		justify-content: space-between;
 		border-bottom: 1px solid #deddd3;
+	}
+
+	.header-tools {
+		display: flex;
+		align-items: center;
+		gap: 12px;
 	}
 
 	.brand {
@@ -275,7 +298,15 @@
 
 		.portal-header {
 			min-height: 70px;
+			flex-wrap: wrap;
+			row-gap: 12px;
+			padding: 12px 0;
 		}
+
+		.header-tools { width: 100%; align-items: stretch; }
+		.header-tools :global(.switcher) { flex: 1; }
+		.header-tools :global(.switcher-trigger) { width: 100%; justify-content: flex-start; }
+		.header-tools :global(.workspace-description) { flex: 1; }
 
 		.identity-card {
 			flex-wrap: wrap;
