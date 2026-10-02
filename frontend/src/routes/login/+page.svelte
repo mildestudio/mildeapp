@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import AuthLayout from '$lib/components/AuthLayout.svelte';
-	import { apiRequest } from '$lib/api';
-	import { getUser, isAuthenticated, redirectByRole, saveAuth } from '$lib/auth/session';
-	import type { LoginResponse } from '$lib/auth/types';
+	import { apiRequest, ApiError } from '$lib/api';
+	import { clearAuth, getUser, isAuthenticated, redirectByRole, saveAuth } from '$lib/auth/session';
+	import type { AuthUser, LoginResponse } from '$lib/auth/types';
 
 	let email = $state('');
 	let password = $state('');
@@ -13,11 +13,18 @@
 
 	onMount(() => {
 		registered = new URLSearchParams(window.location.search).get('registered') === '1';
-		if (isAuthenticated()) {
-			const user = getUser();
-			if (user) void redirectByRole(user.role);
-		}
+		void redirectIfSessionIsValid();
 	});
+
+	async function redirectIfSessionIsValid(): Promise<void> {
+		if (!isAuthenticated()) return;
+		try {
+			const user = await apiRequest<AuthUser>('/auth/me');
+			await redirectByRole(user.role);
+		} catch (cause: unknown) {
+			if (cause instanceof ApiError && cause.status === 401) clearAuth();
+		}
+	}
 
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();

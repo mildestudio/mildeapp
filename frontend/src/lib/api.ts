@@ -1,3 +1,6 @@
+import { goto } from '$app/navigation';
+import { clearAuth } from '$lib/auth/session';
+
 const API_BASE_URL = (
 	import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1'
 ).replace(/\/$/, '');
@@ -5,7 +8,6 @@ const API_BASE_URL = (
 type ApiRequestOptions = {
 	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 	body?: unknown;
-	token?: string;
 };
 
 export class ApiError extends Error {
@@ -20,16 +22,16 @@ export class ApiError extends Error {
 
 export async function apiRequest<T>(
 	path: string,
-	{ method = 'GET', body, token }: ApiRequestOptions = {}
+	{ method = 'GET', body }: ApiRequestOptions = {}
 ): Promise<T> {
 	const headers = new Headers({ Accept: 'application/json' });
 	if (body !== undefined) headers.set('Content-Type', 'application/json');
-	if (token) headers.set('Authorization', `Bearer ${token}`);
 
 	let response: Response;
 	try {
 		response = await fetch(`${API_BASE_URL}${path}`, {
 			method,
+			credentials: 'include',
 			headers,
 			body: body === undefined ? undefined : JSON.stringify(body)
 		});
@@ -47,6 +49,10 @@ export async function apiRequest<T>(
 	}
 
 	if (!response.ok) {
+		if (response.status === 401 && path !== '/auth/login') {
+			clearAuth();
+			await goto('/login', { replaceState: true });
+		}
 		throw new ApiError(readErrorMessage(payload) ?? `Request failed (${response.status}).`, response.status);
 	}
 

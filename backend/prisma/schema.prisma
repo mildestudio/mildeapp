@@ -25,6 +25,14 @@ enum WorkspaceRole {
   CONTRACTOR
 }
 
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -46,21 +54,116 @@ model Workspace {
   name      String
   slug      String            @unique
   members   WorkspaceMember[]
+  projects  Project[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 }
 
 model WorkspaceMember {
-  id          String        @id @default(uuid())
+  id          String          @id @default(uuid())
   workspaceId String
   userId      String
   role        WorkspaceRole
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects    ProjectMember[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@unique([workspaceId, userId])
+  @@unique([id, workspaceId])
   @@index([workspaceId])
   @@index([userId])
+}
+
+model Project {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      ProjectStatus   @default(DRAFT)
+  startDate   DateTime?
+  targetDate  DateTime?
+  members     ProjectMember[]
+  spaces      ProjectSpace[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId])
+}
+
+model ProjectMember {
+  id                String          @id @default(uuid())
+  projectId         String
+  workspaceId       String
+  workspaceMemberId String
+  project           Project         @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  workspaceMember   WorkspaceMember @relation(fields: [workspaceMemberId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+
+  @@unique([projectId, workspaceMemberId])
+  @@index([projectId])
+  @@index([workspaceMemberId])
+}
+
+enum HotspotType {
+  NAVIGATION
+  INFO
+}
+
+model ProjectSpace {
+  id        String         @id @default(uuid())
+  projectId String
+  name      String
+  sortOrder Int            @default(0)
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes    ProjectScene[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([id, projectId])
+  @@index([projectId, sortOrder])
+}
+
+model ProjectScene {
+  id               String         @id @default(uuid())
+  projectSpaceId   String
+  projectId        String
+  name             String
+  description      String?
+  panoramaUrl      String?
+  thumbnailUrl     String?
+  sortOrder        Int            @default(0)
+  initialYaw       Float?
+  initialPitch     Float?
+  initialFov       Float?
+  space            ProjectSpace   @relation(fields: [projectSpaceId, projectId], references: [id, projectId], onDelete: Cascade)
+  hotspots         SceneHotspot[] @relation("SceneHotspots")
+  incomingHotspots SceneHotspot[] @relation("NavigationTarget")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([id, projectId])
+  @@index([projectSpaceId, sortOrder])
+}
+
+model SceneHotspot {
+  id            String        @id @default(uuid())
+  sceneId       String
+  projectId     String
+  type          HotspotType
+  yaw           Float
+  pitch         Float
+  title         String?
+  description   String?
+  targetSceneId String?
+  scene         ProjectScene  @relation("SceneHotspots", fields: [sceneId, projectId], references: [id, projectId], onDelete: Cascade)
+  targetScene   ProjectScene? @relation("NavigationTarget", fields: [targetSceneId, projectId], references: [id, projectId], onDelete: Cascade)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([sceneId])
+  @@index([targetSceneId])
 }
