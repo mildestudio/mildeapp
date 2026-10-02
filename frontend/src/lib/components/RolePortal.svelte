@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { ApiError } from '$lib/api';
 	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
+	import { formatProjectDate, listProjects, projectStatusLabel } from '$lib/projects/api';
+	import type { ProjectSummary } from '$lib/projects/types';
 	import type { AuthUser, UserRole } from '$lib/auth/types';
 	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
 	import type { WorkspaceSummary } from '$lib/workspaces/types';
@@ -16,6 +19,9 @@
 	let user = $state<AuthUser | null>(null);
 	let workspace = $state<WorkspaceSummary | null>(null);
 	let availableWorkspaces = $state<WorkspaceSummary[]>([]);
+	let myProjects = $state<ProjectSummary[]>([]);
+	let projectsLoading = $state(false);
+	let projectError = $state('');
 	let error = $state('');
 	let ready = $state(false);
 
@@ -41,6 +47,16 @@
 				await redirectByRole(workspace.role);
 				return;
 			}
+			if (role !== 'OWNER') {
+				projectsLoading = true;
+				try {
+					myProjects = await listProjects(token, workspace.id);
+				} catch (cause: unknown) {
+					projectError = cause instanceof ApiError ? cause.message : 'Projects could not be loaded.';
+				} finally {
+					projectsLoading = false;
+				}
+			}
 			ready = true;
 		} catch (cause: unknown) {
 			error = cause instanceof Error ? cause.message : 'Workspace access could not be loaded.';
@@ -51,7 +67,23 @@
 	async function changeWorkspace(nextWorkspace: WorkspaceSummary): Promise<void> {
 		selectWorkspace(nextWorkspace.id);
 		workspace = nextWorkspace;
-		if (nextWorkspace.role !== role) await redirectByRole(nextWorkspace.role);
+		if (nextWorkspace.role !== role) {
+			await redirectByRole(nextWorkspace.role);
+			return;
+		}
+		if (role !== 'OWNER') {
+			const token = getAccessToken();
+			if (!token) return;
+			projectsLoading = true;
+			projectError = '';
+			try {
+				myProjects = await listProjects(token, nextWorkspace.id);
+			} catch (cause: unknown) {
+				projectError = cause instanceof ApiError ? cause.message : 'Projects could not be loaded.';
+			} finally {
+				projectsLoading = false;
+			}
+		}
 	}
 </script>
 
@@ -96,7 +128,41 @@
 				<span class="role-label">{workspace?.role ?? user.role}</span>
 			</div>
 			{#if role === 'OWNER' && workspace}
-				<a class="members-link" href="/owner/members">Team &amp; access</a>
+				<nav class="owner-links" aria-label="Workspace management">
+					<a class="members-link" href="/owner/projects">Projects</a>
+					<a class="members-link" href="/owner/members">Team &amp; access</a>
+				</nav>
+			{/if}
+			{#if role !== 'OWNER' && workspace}
+				<section class="my-projects" aria-labelledby="my-projects-title">
+					<div class="projects-heading">
+						<div>
+							<p class="eyebrow">{workspace.name}</p>
+							<h2 id="my-projects-title">My Projects</h2>
+						</div>
+						<p class="projects-guidance">Only projects assigned to your account appear here.</p>
+					</div>
+					{#if projectsLoading}
+						<p class="project-state" role="status">Loading projects…</p>
+					{:else if projectError}
+						<p class="project-state project-error" role="alert">{projectError}</p>
+					{:else if myProjects.length === 0}
+						<p class="project-state">No projects have been assigned to your account yet.</p>
+					{:else}
+						<div class="project-list">
+							{#each myProjects as project (project.id)}
+								<a class="project-row" href={`/projects/${project.id}`}>
+									<span class="project-main">
+										<strong>{project.name}</strong>
+										<span>{project.targetDate ? `Target ${formatProjectDate(project.targetDate)}` : 'No target date'}</span>
+									</span>
+									<span class={`project-status status-${project.status.toLowerCase()}`}>{projectStatusLabel(project.status)}</span>
+									<span class="project-open">Open <span aria-hidden="true">↗</span></span>
+								</a>
+							{/each}
+						</div>
+					{/if}
+				</section>
 			{/if}
 			{#if description}
 				<p class="placeholder">{description}</p>
@@ -276,6 +342,85 @@
 		text-underline-offset: 4px;
 	}
 
+	.owner-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px 22px;
+		margin-top: 24px;
+	}
+
+	.owner-links .members-link { margin-top: 0; }
+
+	.my-projects {
+		margin-top: 54px;
+		border-top: 1px solid #deddd3;
+		padding-top: 28px;
+	}
+
+	.projects-heading {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 20px;
+		margin-bottom: 17px;
+	}
+
+	.projects-heading .eyebrow { margin-bottom: 6px; }
+
+	h2 {
+		margin: 0;
+		color: #292e28;
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: clamp(25px, 4vw, 34px);
+		font-weight: 400;
+		letter-spacing: -0.035em;
+	}
+
+	.projects-guidance {
+		max-width: 260px;
+		margin: 0;
+		color: #62665d;
+		font-size: 12px;
+		line-height: 1.5;
+	}
+
+	.project-list { border-top: 1px solid #deddd3; }
+
+	.project-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto auto;
+		align-items: center;
+		gap: 18px;
+		min-height: 76px;
+		padding: 12px 10px;
+		border-bottom: 1px solid #deddd3;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.project-row:hover { background: #eeece4; }
+	.project-main { display: grid; min-width: 0; gap: 5px; }
+	.project-main strong { font-size: 14px; font-weight: 600; }
+	.project-main span { color: #62665d; font-size: 12px; }
+
+	.project-status {
+		padding: 7px 9px;
+		background: #eae9df;
+		color: #465442;
+		font-size: 10px;
+		font-weight: 650;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+
+	.status-on_hold { background: #f2eadb; color: #74552f; }
+	.status-completed { background: #e4ebe2; color: #3d5a3b; }
+	.status-archived { background: #ecebe8; color: #5e615a; }
+	.project-open { color: #53604f; font-size: 12px; white-space: nowrap; }
+	.project-state { margin: 0; padding: 18px 16px; border: 1px solid #deddd3; background: #fffefa; color: #62665d; font-size: 13px; line-height: 1.55; }
+	.project-error { color: #7b332c; }
+
 	.portal-error {
 		max-width: 560px;
 		margin: 0 auto;
@@ -307,6 +452,11 @@
 		.header-tools :global(.switcher) { flex: 1; }
 		.header-tools :global(.switcher-trigger) { width: 100%; justify-content: flex-start; }
 		.header-tools :global(.workspace-description) { flex: 1; }
+		.projects-heading { align-items: start; flex-direction: column; gap: 8px; }
+		.projects-guidance { max-width: 100%; }
+		.project-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+		.project-status { grid-column: 2; grid-row: 1; }
+		.project-open { grid-column: 1 / -1; }
 
 		.identity-card {
 			flex-wrap: wrap;

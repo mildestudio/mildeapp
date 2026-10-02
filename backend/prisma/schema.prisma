@@ -25,6 +25,14 @@ enum WorkspaceRole {
   CONTRACTOR
 }
 
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -46,21 +54,55 @@ model Workspace {
   name      String
   slug      String            @unique
   members   WorkspaceMember[]
+  projects  Project[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 }
 
 model WorkspaceMember {
-  id          String        @id @default(uuid())
+  id          String          @id @default(uuid())
   workspaceId String
   userId      String
   role        WorkspaceRole
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects    ProjectMember[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@unique([workspaceId, userId])
+  @@unique([id, workspaceId])
   @@index([workspaceId])
   @@index([userId])
+}
+
+model Project {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      ProjectStatus   @default(DRAFT)
+  startDate   DateTime?
+  targetDate  DateTime?
+  members     ProjectMember[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId])
+}
+
+model ProjectMember {
+  id                String          @id @default(uuid())
+  projectId         String
+  workspaceId       String
+  workspaceMemberId String
+  project           Project         @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  workspaceMember   WorkspaceMember @relation(fields: [workspaceMemberId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+
+  @@unique([projectId, workspaceMemberId])
+  @@index([projectId])
+  @@index([workspaceMemberId])
 }
