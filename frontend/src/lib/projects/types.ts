@@ -4,6 +4,7 @@ export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCH
 
 export interface ProjectMember {
 	id: string;
+	workspaceMemberId: string;
 	role: WorkspaceRole;
 	createdAt: string;
 	user: {

@@ -3,8 +3,9 @@
 	import type { PageProps } from './$types';
 	import { get } from 'svelte/store';
 	import { ApiError } from '$lib/api';
-	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import { getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
+	import VirtualSpace from '$lib/spatial/VirtualSpace.svelte';
 	import { formatProjectDate, getProject, projectStatusLabel } from '$lib/projects/api';
 	import type { ProjectSummary } from '$lib/projects/types';
 	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
@@ -18,15 +19,14 @@
 	let error = $state('');
 
 	onMount(async () => {
-		const token = getAccessToken();
-		if (!token || !getUser()) {
+		if (!getUser()) {
 			window.location.replace('/login');
 			return;
 		}
 		try {
-			await loadWorkspaces(token);
+			await loadWorkspaces();
 			availableWorkspaces = get(workspaces);
-			project = await getProject(token, params.id);
+			project = await getProject(params.id);
 			workspace = availableWorkspaces.find((entry) => entry.id === project?.workspaceId) ?? null;
 			if (workspace) selectWorkspace(workspace.id);
 		} catch (cause: unknown) {
@@ -71,7 +71,8 @@
 				<div><p class="eyebrow">{workspace?.name ?? 'Project'}</p><h1>{project.name}</h1></div>
 				<span class={`status status-${project.status.toLowerCase()}`}>{projectStatusLabel(project.status)}</span>
 			</div>
-			<section class="detail-panel" aria-labelledby="detail-heading">
+			<nav class="project-sections" aria-label="Project sections"><a href="#overview">Overview</a><a href="#virtual-space">Virtual Space</a></nav>
+			<section id="overview" class="detail-panel" aria-labelledby="detail-heading">
 				<p class="eyebrow">Project information</p>
 				<h2 id="detail-heading">Details</h2>
 				<p class="description">{project.description || 'No description has been added.'}</p>
@@ -80,6 +81,7 @@
 					<div><dt>Target date</dt><dd>{formatProjectDate(project.targetDate)}</dd></div>
 				</dl>
 			</section>
+			<VirtualSpace projectId={project.id} />
 			<section class="detail-panel" aria-labelledby="project-people-heading">
 				<p class="eyebrow">Access</p>
 				<h2 id="project-people-heading">Project members</h2>
@@ -102,6 +104,8 @@
 </main>
 
 <style>
+	.project-sections { display: flex; flex-wrap: wrap; gap: 24px; }
+	.project-sections a { display: inline-flex; min-height: 44px; align-items: center; color: #344332; text-underline-offset: 4px; }
 	.project-page { min-height: 100svh; padding: 0 clamp(18px, 6vw, 84px) 72px; background: #f6f4ee; color: #292e28; }
 	.page-header { display: flex; min-height: 78px; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #deddd3; }
 	.brand { display: inline-flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }

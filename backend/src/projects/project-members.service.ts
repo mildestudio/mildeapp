@@ -20,11 +20,11 @@ export class ProjectMembersService {
 		const project = await this.projects.getOwnerProject(userId, projectId);
 		const workspaceMember = await this.prisma.workspaceMember.findUnique({
 			where: {
-				workspaceId_userId: { workspaceId: project.workspaceId, userId: input.userId },
+				id_workspaceId: { workspaceId: project.workspaceId, id: input.workspaceMemberId },
 			},
 			select: { id: true, role: true, user: { select: { id: true, name: true, email: true } } },
 		});
-		if (!workspaceMember) throw new NotFoundException('User is not a member of this workspace');
+		if (!workspaceMember) throw new NotFoundException('Workspace member not found in this workspace');
 
 		try {
 			const member = await this.prisma.projectMember.create({
@@ -37,6 +37,7 @@ export class ProjectMembersService {
 			});
 			return {
 				...member,
+				workspaceMemberId: workspaceMember.id,
 				role: workspaceMember.role,
 				user: workspaceMember.user,
 			};

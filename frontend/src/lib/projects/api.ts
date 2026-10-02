@@ -7,62 +7,54 @@ import type {
 	UpdateProjectInput
 } from './types';
 
-export function listProjects(token: string, workspaceId: string): Promise<ProjectSummary[]> {
-	return apiRequest<ProjectSummary[]>(`/workspaces/${workspaceId}/projects`, { token });
+export function listProjects(workspaceId: string): Promise<ProjectSummary[]> {
+	return apiRequest<ProjectSummary[]>(`/workspaces/${workspaceId}/projects`);
 }
 
-export function getProject(token: string, projectId: string): Promise<ProjectSummary> {
-	return apiRequest<ProjectSummary>(`/projects/${projectId}`, { token });
+export function getProject(projectId: string): Promise<ProjectSummary> {
+	return apiRequest<ProjectSummary>(`/projects/${projectId}`);
 }
 
 export function createProject(
-	token: string,
 	workspaceId: string,
 	body: CreateProjectInput
 ): Promise<ProjectSummary> {
 	return apiRequest<ProjectSummary>(`/workspaces/${workspaceId}/projects`, {
 		method: 'POST',
-		token,
 		body
 	});
 }
 
 export function updateProject(
-	token: string,
 	projectId: string,
 	body: UpdateProjectInput
 ): Promise<ProjectSummary> {
-	return apiRequest<ProjectSummary>(`/projects/${projectId}`, { method: 'PATCH', token, body });
+	return apiRequest<ProjectSummary>(`/projects/${projectId}`, { method: 'PATCH', body });
 }
 
 export function changeProjectStatus(
-	token: string,
 	projectId: string,
 	action: 'activate' | 'hold' | 'complete' | 'archive'
 ): Promise<ProjectSummary> {
-	return apiRequest<ProjectSummary>(`/projects/${projectId}/${action}`, { method: 'POST', token });
+	return apiRequest<ProjectSummary>(`/projects/${projectId}/${action}`, { method: 'POST' });
 }
 
 export function addProjectMember(
-	token: string,
 	projectId: string,
-	userId: string
+	workspaceMemberId: string
 ): Promise<ProjectMember> {
 	return apiRequest<ProjectMember>(`/projects/${projectId}/members`, {
 		method: 'POST',
-		token,
-		body: { userId }
+		body: { workspaceMemberId }
 	});
 }
 
 export function removeProjectMember(
-	token: string,
 	projectId: string,
 	memberId: string
 ): Promise<{ deleted: boolean }> {
 	return apiRequest<{ deleted: boolean }>(`/projects/${projectId}/members/${memberId}`, {
 		method: 'DELETE',
-		token
 	});
 }
 

@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { get } from 'svelte/store';
 	import { ApiError } from '$lib/api';
-	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import { getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
 	import { createProject } from '$lib/projects/api';
 	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
@@ -20,14 +20,13 @@
 	let error = $state('');
 
 	onMount(async () => {
-		const token = getAccessToken();
 		const user = getUser();
-		if (!token || !user) {
+		if (!user) {
 			window.location.replace('/login');
 			return;
 		}
 		try {
-			workspace = await loadWorkspaces(token);
+			workspace = await loadWorkspaces();
 			availableWorkspaces = get(workspaces);
 			if (!workspace) error = 'This account is not a member of a workspace.';
 			else if (workspace.role !== 'OWNER') {
@@ -53,13 +52,12 @@
 
 	async function submit(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
-		const token = getAccessToken();
-		if (!token) return logout();
+		if (!getUser()) return logout();
 		if (!workspace) return;
 		saving = true;
 		error = '';
 		try {
-			const project = await createProject(token, workspace.id, {
+			const project = await createProject(workspace.id, {
 				name: name.trim(),
 				description: description.trim() || null,
 				startDate: startDate || null,

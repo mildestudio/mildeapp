@@ -25,6 +25,7 @@ const projectSelect = {
 	members: {
 		select: {
 			id: true,
+			workspaceMemberId: true,
 			createdAt: true,
 			workspaceMember: {
 				select: {
@@ -94,6 +95,10 @@ export class ProjectsService {
 		const project = await this.findProject(projectId);
 		await this.workspaces.requireWorkspaceRole(userId, project.workspaceId, [WorkspaceRole.OWNER]);
 		return project;
+	}
+
+	async requireProjectOwner(userId: string, projectId: string) {
+		return this.getOwnerProject(userId, projectId);
 	}
 
 	async update(userId: string, projectId: string, input: UpdateProjectDto) {
@@ -190,6 +195,7 @@ export class ProjectsService {
 			updatedAt: project.updatedAt,
 			members: project.members.map((member) => ({
 				id: member.id,
+				workspaceMemberId: member.workspaceMemberId,
 				role: member.workspaceMember.role,
 				createdAt: member.createdAt,
 				user: member.workspaceMember.user,

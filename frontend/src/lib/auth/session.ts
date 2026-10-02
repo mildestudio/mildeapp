@@ -2,8 +2,8 @@ import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import type { AuthUser, LoginResponse, UserRole } from './types';
 
-const TOKEN_KEY = 'milde.accessToken';
 const USER_KEY = 'milde.user';
+const LEGACY_TOKEN_KEY = 'milde.accessToken';
 
 const dashboardByRole: Record<UserRole, string> = {
 	OWNER: '/owner',
@@ -16,17 +16,13 @@ const userRoles = new Set<UserRole>(['OWNER', 'EMPLOYEE', 'CLIENT', 'CONTRACTOR'
 
 export function saveAuth(auth: LoginResponse): void {
 	if (!browser) return;
-	localStorage.setItem(TOKEN_KEY, auth.accessToken);
+	localStorage.removeItem(LEGACY_TOKEN_KEY);
 	localStorage.setItem(USER_KEY, JSON.stringify(auth.user));
-}
-
-export function getAccessToken(): string | null {
-	if (!browser) return null;
-	return localStorage.getItem(TOKEN_KEY);
 }
 
 export function getUser(): AuthUser | null {
 	if (!browser) return null;
+	localStorage.removeItem(LEGACY_TOKEN_KEY);
 
 	try {
 		const value: unknown = JSON.parse(localStorage.getItem(USER_KEY) ?? 'null');
@@ -50,7 +46,13 @@ export function getUser(): AuthUser | null {
 }
 
 export function isAuthenticated(): boolean {
-	return Boolean(getAccessToken() && getUser());
+	return Boolean(getUser());
+}
+
+export function clearAuth(): void {
+	if (!browser) return;
+	localStorage.removeItem(LEGACY_TOKEN_KEY);
+	localStorage.removeItem(USER_KEY);
 }
 
 export async function redirectByRole(role: UserRole): Promise<void> {
@@ -58,9 +60,12 @@ export async function redirectByRole(role: UserRole): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
-	if (browser) {
-		localStorage.removeItem(TOKEN_KEY);
-		localStorage.removeItem(USER_KEY);
+	try {
+		const { apiRequest } = await import('$lib/api');
+		await apiRequest('/auth/logout', { method: 'POST' });
+	} catch {
+		// Clear the local profile even when the API is unreachable.
 	}
+	clearAuth();
 	await goto('/login', { replaceState: true });
 }

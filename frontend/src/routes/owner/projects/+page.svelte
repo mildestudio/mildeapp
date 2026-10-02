@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { ApiError } from '$lib/api';
-	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import { getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
 	import { formatProjectDate, listProjects, projectStatusLabel } from '$lib/projects/api';
 	import type { ProjectSummary } from '$lib/projects/types';
@@ -17,14 +17,13 @@
 	let error = $state('');
 
 	onMount(async () => {
-		const token = getAccessToken();
 		const user = getUser();
-		if (!token || !user) {
+		if (!user) {
 			window.location.replace('/login');
 			return;
 		}
 		try {
-			workspace = await loadWorkspaces(token);
+			workspace = await loadWorkspaces();
 			availableWorkspaces = get(workspaces);
 			if (!workspace) {
 				error = 'This account is not a member of a workspace.';
@@ -32,7 +31,7 @@
 				await redirectByRole(workspace.role);
 				return;
 			} else {
-				await refreshProjects(token, workspace.id);
+				await refreshProjects(workspace.id);
 			}
 		} catch (cause: unknown) {
 			error = cause instanceof ApiError ? cause.message : 'Projects could not be loaded.';
@@ -41,11 +40,11 @@
 		}
 	});
 
-	async function refreshProjects(token: string, workspaceId: string): Promise<void> {
+	async function refreshProjects(workspaceId: string): Promise<void> {
 		loading = true;
 		error = '';
 		try {
-			projects = await listProjects(token, workspaceId);
+			projects = await listProjects(workspaceId);
 		} catch (cause: unknown) {
 			error = cause instanceof ApiError ? cause.message : 'Projects could not be loaded.';
 		} finally {
@@ -59,11 +58,10 @@
 			await redirectByRole(nextWorkspace.role);
 			return;
 		}
-		const token = getAccessToken();
-		if (!token) return logout();
+		if (!getUser()) return logout();
 		selectWorkspace(nextWorkspace.id);
 		workspace = nextWorkspace;
-		await refreshProjects(token, nextWorkspace.id);
+		await refreshProjects(nextWorkspace.id);
 	}
 </script>
 

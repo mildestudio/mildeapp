@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { ApiError } from '$lib/api';
-	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import { getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
 	import { formatProjectDate, listProjects, projectStatusLabel } from '$lib/projects/api';
 	import type { ProjectSummary } from '$lib/projects/types';
@@ -26,17 +26,16 @@
 	let ready = $state(false);
 
 	onMount(async () => {
-		const token = getAccessToken();
 		const storedUser = getUser();
 
-		if (!token || !storedUser) {
+		if (!storedUser) {
 			window.location.replace('/login');
 			return;
 		}
 
 		user = storedUser;
 		try {
-			workspace = await loadWorkspaces(token);
+			workspace = await loadWorkspaces();
 			availableWorkspaces = get(workspaces);
 			if (!workspace) {
 				error = 'This account is not a member of a workspace yet.';
@@ -50,7 +49,7 @@
 			if (role !== 'OWNER') {
 				projectsLoading = true;
 				try {
-					myProjects = await listProjects(token, workspace.id);
+				myProjects = await listProjects(workspace.id);
 				} catch (cause: unknown) {
 					projectError = cause instanceof ApiError ? cause.message : 'Projects could not be loaded.';
 				} finally {
@@ -72,12 +71,11 @@
 			return;
 		}
 		if (role !== 'OWNER') {
-			const token = getAccessToken();
-			if (!token) return;
+			if (!getUser()) return;
 			projectsLoading = true;
 			projectError = '';
 			try {
-				myProjects = await listProjects(token, nextWorkspace.id);
+				myProjects = await listProjects(nextWorkspace.id);
 			} catch (cause: unknown) {
 				projectError = cause instanceof ApiError ? cause.message : 'Projects could not be loaded.';
 			} finally {
@@ -98,13 +96,15 @@
 			<span class="brand-mark" aria-hidden="true">M</span>
 			<span class="brand-name">Milde <span>Project Space</span></span>
 		</a>
-		{#if ready && workspace && user}
+		{#if user}
 			<div class="header-tools">
-				<WorkspaceSwitcher
-					selected={workspace}
-					options={availableWorkspaces}
-					onSelect={(nextWorkspace) => void changeWorkspace(nextWorkspace)}
-				/>
+				{#if workspace}
+					<WorkspaceSwitcher
+						selected={workspace}
+						options={availableWorkspaces}
+						onSelect={(nextWorkspace) => void changeWorkspace(nextWorkspace)}
+					/>
+				{/if}
 				<button class="logout-button" type="button" onclick={() => void logout()}>Log out</button>
 			</div>
 		{/if}

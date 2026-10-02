@@ -4,8 +4,9 @@
 	import type { PageProps } from './$types';
 	import { get } from 'svelte/store';
 	import { ApiError, apiRequest } from '$lib/api';
-	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import { getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
+	import VirtualSpace from '$lib/spatial/VirtualSpace.svelte';
 	import {
 		addProjectMember,
 		changeProjectStatus,
@@ -24,7 +25,7 @@
 	let availableWorkspaces = $state<WorkspaceSummary[]>([]);
 	let project = $state<ProjectSummary | null>(null);
 	let workspaceMembers = $state<WorkspaceMember[]>([]);
-	let selectedUserId = $state('');
+	let selectedWorkspaceMemberId = $state('');
 	let editing = $state(false);
 	let loading = $state(true);
 	let saving = $state(false);
@@ -37,20 +38,19 @@
 	let targetDate = $state('');
 
 	let eligibleMembers = $derived(
-		workspaceMembers.filter((member) => !project?.members.some((assigned) => assigned.user.id === member.user.id))
+		workspaceMembers.filter((member) => !project?.members.some((assigned) => assigned.workspaceMemberId === member.id))
 	);
 
 	onMount(async () => {
-		const token = getAccessToken();
 		const user = getUser();
-		if (!token || !user) {
+		if (!user) {
 			window.location.replace('/login');
 			return;
 		}
 		try {
-			await loadWorkspaces(token);
+			await loadWorkspaces();
 			availableWorkspaces = get(workspaces);
-			project = await getProject(token, params.id);
+			project = await getProject(params.id);
 			workspace = availableWorkspaces.find((entry) => entry.id === project?.workspaceId) ?? null;
 			if (!workspace) {
 				error = 'This project is outside your workspace access.';
@@ -61,7 +61,7 @@
 				await redirectByRole(workspace.role);
 				return;
 			}
-			workspaceMembers = await apiRequest<WorkspaceMember[]>(`/workspaces/${workspace.id}/members`, { token });
+			workspaceMembers = await apiRequest<WorkspaceMember[]>(`/workspaces/${workspace.id}/members`);
 			fillForm(project);
 		} catch (cause: unknown) {
 			error = cause instanceof ApiError ? cause.message : 'Project details could not be loaded.';
@@ -89,8 +89,7 @@
 
 	async function saveProject(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
-		const token = getAccessToken();
-		if (!token || !project) return logout();
+		if (!getUser() || !project) return logout();
 		saving = true;
 		error = '';
 		try {
@@ -100,7 +99,7 @@
 				startDate: startDate || null,
 				targetDate: targetDate || null
 			};
-			project = await updateProject(token, project.id, input);
+			project = await updateProject(project.id, input);
 			editing = false;
 			notice = 'Project details saved.';
 		} catch (cause: unknown) {
@@ -111,13 +110,12 @@
 	}
 
 	async function runStatusAction(action: 'activate' | 'hold' | 'complete' | 'archive'): Promise<void> {
-		const token = getAccessToken();
-		if (!token || !project) return logout();
+		if (!getUser() || !project) return logout();
 		saving = true;
 		error = '';
 		notice = '';
 		try {
-			project = await changeProjectStatus(token, project.id, action);
+			project = await changeProjectStatus(project.id, action);
 			notice = `Project status changed to ${projectStatusLabel(project.status)}.`;
 		} catch (cause: unknown) {
 			error = cause instanceof ApiError ? cause.message : 'Project status could not be changed.';
@@ -127,15 +125,14 @@
 	}
 
 	async function addMember(): Promise<void> {
-		const token = getAccessToken();
-		if (!token || !project || !selectedUserId) return;
+		if (!getUser() || !project || !selectedWorkspaceMemberId) return;
 		busyMemberId = 'adding';
 		error = '';
 		notice = '';
 		try {
-			const added = await addProjectMember(token, project.id, selectedUserId);
+			const added = await addProjectMember(project.id, selectedWorkspaceMemberId);
 			project = { ...project, members: [...project.members, added] };
-			selectedUserId = '';
+			selectedWorkspaceMemberId = '';
 			notice = `${added.user.name} was added to this project.`;
 		} catch (cause: unknown) {
 			error = cause instanceof ApiError ? cause.message : 'Project member could not be added.';
@@ -146,13 +143,12 @@
 
 	async function removeMember(member: ProjectMember): Promise<void> {
 		if (!project || !window.confirm(`Remove ${member.user.name} from this project?`)) return;
-		const token = getAccessToken();
-		if (!token) return logout();
+		if (!getUser()) return logout();
 		busyMemberId = member.id;
 		error = '';
 		notice = '';
 		try {
-			await removeProjectMember(token, project.id, member.id);
+			await removeProjectMember(project.id, member.id);
 			project = { ...project, members: project.members.filter((assigned) => assigned.id !== member.id) };
 			notice = `${member.user.name} was removed from this project.`;
 		} catch (cause: unknown) {
@@ -209,7 +205,8 @@
 			{#if error}<p class="feedback error" role="alert">{error}</p>{/if}
 			{#if notice}<p class="feedback success" role="status">{notice}</p>{/if}
 
-			<section class="project-section" aria-labelledby="project-details-heading">
+			<nav class="project-sections" aria-label="Project sections"><a href="#overview">Overview</a><a href="#members">Members</a><a href="#virtual-space">Space</a></nav>
+			<section id="overview" class="project-section" aria-labelledby="project-details-heading">
 				<div class="section-heading">
 					<div><p class="eyebrow">Project</p><h2 id="project-details-heading">Details</h2></div>
 					{#if !editing}<button class="secondary-button" type="button" onclick={() => { fillForm(project!); editing = true; }}>Edit details</button>{/if}
@@ -236,7 +233,7 @@
 				{/if}
 			</section>
 
-			<section class="project-section" aria-labelledby="members-heading">
+			<section id="members" class="project-section" aria-labelledby="members-heading">
 				<div class="section-heading">
 					<div><p class="eyebrow">Access</p><h2 id="members-heading">Project members</h2></div>
 					<span class="member-count">{project.members.length} assigned</span>
@@ -260,13 +257,13 @@
 					<form class="add-member-form" onsubmit={(event) => { event.preventDefault(); void addMember(); }}>
 						<label for="workspace-member">Add a workspace member</label>
 						<div class="add-controls">
-							<select id="workspace-member" bind:value={selectedUserId} required>
+							<select id="workspace-member" bind:value={selectedWorkspaceMemberId} required>
 								<option value="" disabled>Select a person</option>
 								{#each eligibleMembers as member (member.id)}
-									<option value={member.user.id}>{member.user.name} · {member.role}</option>
+									<option value={member.id}>{member.user.name} · {member.role}</option>
 								{/each}
 							</select>
-							<button class="secondary-button" type="submit" disabled={!selectedUserId || busyMemberId === 'adding'}>{busyMemberId === 'adding' ? 'Adding…' : 'Add member'}</button>
+							<button class="secondary-button" type="submit" disabled={!selectedWorkspaceMemberId || busyMemberId === 'adding'}>{busyMemberId === 'adding' ? 'Adding…' : 'Add member'}</button>
 						</div>
 					</form>
 				{:else}
@@ -274,6 +271,7 @@
 				{/if}
 			</section>
 
+			<VirtualSpace projectId={project.id} editable={workspace.role === 'OWNER'} />
 			<section class="project-section status-section" aria-labelledby="status-heading">
 				<div class="section-heading"><div><p class="eyebrow">Project status</p><h2 id="status-heading">Update status</h2></div></div>
 				<p class="status-guidance">Status changes follow the project lifecycle.</p>
@@ -290,6 +288,8 @@
 </main>
 
 <style>
+	.project-sections { display: flex; flex-wrap: wrap; gap: 24px; }
+	.project-sections a { display: inline-flex; min-height: 44px; align-items: center; color: #344332; text-underline-offset: 4px; }
 	.detail-page { min-height: 100svh; padding: 0 clamp(18px, 6vw, 84px) 72px; background: #f6f4ee; color: #292e28; }
 	.page-header { display: flex; min-height: 78px; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #deddd3; }
 	.brand { display: inline-flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }

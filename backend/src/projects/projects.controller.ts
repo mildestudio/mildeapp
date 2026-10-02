@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -6,11 +7,15 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { ListProjectsQueryDto } from './dto/list-projects-query.dto';
 import { ProjectsService } from './projects.service';
 
+@ApiTags('Projects')
+@ApiCookieAuth('cookieAuth')
+@ApiUnauthorizedResponse({ description: 'A valid HttpOnly login cookie is required.' })
 @Controller('workspaces/:workspaceId/projects')
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
 	constructor(private readonly projects: ProjectsService) {}
 
+	@ApiOperation({ summary: "List workspace projects; non-owners receive assigned projects only" })
 	@Get()
 	list(
 		@CurrentUser() user: AuthenticatedUser,
@@ -20,6 +25,7 @@ export class ProjectsController {
 		return this.projects.listForWorkspace(user.id, workspaceId, query);
 	}
 
+	@ApiOperation({ summary: "Create a project (workspace OWNER only)" })
 	@Post()
 	create(
 		@CurrentUser() user: AuthenticatedUser,

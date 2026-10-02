@@ -8,8 +8,8 @@ const ACTIVE_WORKSPACE_KEY = 'milde.activeWorkspaceId';
 export const workspaces = writable<WorkspaceSummary[]>([]);
 export const activeWorkspace = writable<WorkspaceSummary | null>(null);
 
-export async function loadWorkspaces(token: string): Promise<WorkspaceSummary | null> {
-	const available = await apiRequest<WorkspaceSummary[]>('/workspaces', { token });
+export async function loadWorkspaces(): Promise<WorkspaceSummary | null> {
+	const available = await apiRequest<WorkspaceSummary[]>('/workspaces');
 	workspaces.set(available);
 
 	const savedId = browser ? localStorage.getItem(ACTIVE_WORKSPACE_KEY) : null;

@@ -86,6 +86,7 @@ model Project {
   startDate   DateTime?
   targetDate  DateTime?
   members     ProjectMember[]
+  spaces      ProjectSpace[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -105,4 +106,64 @@ model ProjectMember {
   @@unique([projectId, workspaceMemberId])
   @@index([projectId])
   @@index([workspaceMemberId])
+}
+
+enum HotspotType {
+  NAVIGATION
+  INFO
+}
+
+model ProjectSpace {
+  id        String         @id @default(uuid())
+  projectId String
+  name      String
+  sortOrder Int            @default(0)
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes    ProjectScene[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([id, projectId])
+  @@index([projectId, sortOrder])
+}
+
+model ProjectScene {
+  id               String         @id @default(uuid())
+  projectSpaceId   String
+  projectId        String
+  name             String
+  description      String?
+  panoramaUrl      String?
+  thumbnailUrl     String?
+  sortOrder        Int            @default(0)
+  initialYaw       Float?
+  initialPitch     Float?
+  initialFov       Float?
+  space            ProjectSpace   @relation(fields: [projectSpaceId, projectId], references: [id, projectId], onDelete: Cascade)
+  hotspots         SceneHotspot[] @relation("SceneHotspots")
+  incomingHotspots SceneHotspot[] @relation("NavigationTarget")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([id, projectId])
+  @@index([projectSpaceId, sortOrder])
+}
+
+model SceneHotspot {
+  id            String        @id @default(uuid())
+  sceneId       String
+  projectId     String
+  type          HotspotType
+  yaw           Float
+  pitch         Float
+  title         String?
+  description   String?
+  targetSceneId String?
+  scene         ProjectScene  @relation("SceneHotspots", fields: [sceneId, projectId], references: [id, projectId], onDelete: Cascade)
+  targetScene   ProjectScene? @relation("NavigationTarget", fields: [targetSceneId, projectId], references: [id, projectId], onDelete: Cascade)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([sceneId])
+  @@index([targetSceneId])
 }

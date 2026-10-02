@@ -8,6 +8,7 @@ import { ProjectsService } from './projects.service';
 describe('ProjectsService', () => {
 	const prisma = {
 		project: {
+			create: jest.fn(),
 			findMany: jest.fn(),
 			findUnique: jest.fn(),
 			update: jest.fn(),
@@ -38,6 +39,51 @@ describe('ProjectsService', () => {
 				},
 			}),
 		);
+	});
+
+	it.each([WorkspaceRole.EMPLOYEE, WorkspaceRole.CLIENT, WorkspaceRole.CONTRACTOR])(
+		'limits %s project lists to projects assigned to that workspace membership',
+		async (role) => {
+			jest.mocked(workspaces.getMembership).mockResolvedValue({ id: `${role}-membership`, role } as never);
+			jest.mocked(prisma.project.findMany).mockResolvedValue([]);
+
+			await service.listForWorkspace('user-id', 'workspace-id', {});
+
+			expect(prisma.project.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						workspaceId: 'workspace-id',
+						members: { some: { workspaceMemberId: `${role}-membership` } },
+					},
+				}),
+			);
+		},
+	);
+
+	it('creates a draft project in the route workspace for an owner', async () => {
+		jest.mocked(workspaces.requireWorkspaceRole).mockResolvedValue({} as never);
+		jest.mocked(prisma.project.create).mockResolvedValue({
+			id: 'project-id',
+			workspaceId: 'workspace-id',
+			name: 'Smith Residence',
+			description: null,
+			status: ProjectStatus.DRAFT,
+			startDate: null,
+			targetDate: null,
+			createdAt: new Date('2026-10-01T00:00:00.000Z'),
+			updatedAt: new Date('2026-10-01T00:00:00.000Z'),
+			members: [],
+		} as never);
+
+		const result = await service.create('owner-id', 'workspace-id', { name: ' Smith Residence ' });
+
+		expect(workspaces.requireWorkspaceRole).toHaveBeenCalledWith('owner-id', 'workspace-id', [WorkspaceRole.OWNER]);
+		expect(prisma.project.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ workspaceId: 'workspace-id', name: 'Smith Residence' }),
+			}),
+		);
+		expect(result.status).toBe(ProjectStatus.DRAFT);
 	});
 
 	it('does not restrict owners to assigned projects', async () => {

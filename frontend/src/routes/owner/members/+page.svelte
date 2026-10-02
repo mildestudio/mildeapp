@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { apiRequest, ApiError } from '$lib/api';
-	import { getAccessToken, getUser, logout, redirectByRole } from '$lib/auth/session';
+	import { getUser, logout, redirectByRole } from '$lib/auth/session';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
 	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
 	import type { WorkspaceSummary, WorkspaceMember, WorkspaceRole } from '$lib/workspaces/types';
@@ -17,15 +17,14 @@
 	let notice = $state('');
 
 	onMount(async () => {
-		const token = getAccessToken();
 		const user = getUser();
-		if (!token || !user) {
+		if (!user) {
 			window.location.replace('/login');
 			return;
 		}
 
 		try {
-			workspace = await loadWorkspaces(token);
+			workspace = await loadWorkspaces();
 			availableWorkspaces = get(workspaces);
 			if (!workspace) {
 				error = 'This account is not a member of a workspace.';
@@ -35,7 +34,7 @@
 				await redirectByRole(workspace.role);
 				return;
 			}
-			await refreshMembers(token, workspace.id);
+			await refreshMembers(workspace.id);
 		} catch (cause: unknown) {
 			error = cause instanceof Error ? cause.message : 'Team access could not be loaded.';
 		} finally {
@@ -49,8 +48,7 @@
 			await redirectByRole(nextWorkspace.role);
 			return;
 		}
-		const token = getAccessToken();
-		if (!token) {
+		if (!getUser()) {
 			await logout();
 			return;
 		}
@@ -59,20 +57,19 @@
 		error = '';
 		notice = '';
 		try {
-			await refreshMembers(token, nextWorkspace.id);
+			await refreshMembers(nextWorkspace.id);
 		} catch (cause: unknown) {
 			error = cause instanceof Error ? cause.message : 'Members could not be loaded for this workspace.';
 		}
 	}
 
-	async function refreshMembers(token: string, workspaceId: string): Promise<void> {
-		members = await apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`, { token });
+	async function refreshMembers(workspaceId: string): Promise<void> {
+		members = await apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`);
 	}
 
 	async function changeRole(member: WorkspaceMember, nextRole: string): Promise<void> {
 		if (!workspace || !roles.includes(nextRole as WorkspaceRole) || nextRole === member.role) return;
-		const token = getAccessToken();
-		if (!token) {
+		if (!getUser()) {
 			await logout();
 			return;
 		}
@@ -83,7 +80,7 @@
 		try {
 			const updated = await apiRequest<WorkspaceMember>(
 				`/workspaces/${workspace.id}/members/${member.id}`,
-				{ method: 'PATCH', token, body: { role: nextRole } }
+				{ method: 'PATCH', body: { role: nextRole } }
 			);
 			members = members.map((row) => (row.id === updated.id ? updated : row));
 			notice = `${member.user.name}'s workspace role is now ${updated.role}.`;
@@ -96,8 +93,7 @@
 
 	async function removeMember(member: WorkspaceMember): Promise<void> {
 		if (!workspace || !window.confirm(`Remove ${member.user.name} from ${workspace.name}?`)) return;
-		const token = getAccessToken();
-		if (!token) {
+		if (!getUser()) {
 			await logout();
 			return;
 		}
@@ -108,7 +104,6 @@
 		try {
 			await apiRequest<{ deleted: boolean }>(`/workspaces/${workspace.id}/members/${member.id}`, {
 				method: 'DELETE',
-				token
 			});
 			members = members.filter((row) => row.id !== member.id);
 			notice = `${member.user.name} was removed from the workspace.`;
