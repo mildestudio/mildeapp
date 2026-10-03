@@ -64,5 +64,8 @@
 	},
 	"keywords": [
 		"svelte"
-	]
+	],
+	"dependencies": {
+		"pannellum": "^2.5.7"
+	}
 }
