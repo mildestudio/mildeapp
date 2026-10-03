@@ -1,0 +1,97 @@
+name: mildeapp
+
+services:
+  traefik:
+    image: traefik:v3.7.13
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=mildeapp_proxy
+      - --entrypoints.web.address=:80
+      - --log.level=INFO
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - proxy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    expose:
+      - "3000"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=mildeapp_proxy
+      - traefik.http.routers.milde-frontend.rule=Host(`${DOMAIN:-localhost}`)
+      - traefik.http.routers.milde-frontend.entrypoints=web
+      - traefik.http.services.milde-frontend.loadbalancer.server.port=3000
+    networks:
+      - proxy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      FRONTEND_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost}
+      API_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=mildeapp_proxy
+      - traefik.http.routers.milde-api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api`)
+      - traefik.http.routers.milde-api.entrypoints=web
+      - traefik.http.routers.milde-api.priority=100
+      - traefik.http.services.milde-api.loadbalancer.server.port=3000
+    networks:
+      - proxy
+      - data
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - data
+
+networks:
+  proxy:
+    name: mildeapp_proxy
+  data:
+    internal: true
+
+volumes:
+  postgres_data:

@@ -1,0 +1,40 @@
+services:
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=mildeapp_proxy
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?Set ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --log.level=INFO
+    ports:
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - acme_data:/letsencrypt
+
+  frontend:
+    environment:
+      NODE_ENV: production
+    labels:
+      - traefik.http.routers.milde-frontend.entrypoints=websecure
+      - traefik.http.routers.milde-frontend.tls=true
+      - traefik.http.routers.milde-frontend.tls.certresolver=letsencrypt
+
+  backend:
+    environment:
+      FRONTEND_ORIGIN: https://${DOMAIN:?Set DOMAIN}
+      API_ORIGIN: https://${DOMAIN:?Set DOMAIN}
+    labels:
+      - traefik.http.routers.milde-api.entrypoints=websecure
+      - traefik.http.routers.milde-api.tls=true
+      - traefik.http.routers.milde-api.tls.certresolver=letsencrypt
+
+volumes:
+  acme_data:
