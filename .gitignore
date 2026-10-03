@@ -145,8 +145,7 @@ vite.config.ts.timestamp-*
 # Astro generated types
 .astro/
 
-# Turbo Repo
-.turbo
+# Turbo Repo.turbo
 
 milde-project-space-v4/
 
@@ -154,3 +153,4 @@ milde-project-space-v4.zip
 .agents/
 /testingguide/
 DOCKER.md
+.playwright-mcp/

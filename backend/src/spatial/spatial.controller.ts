@@ -1,4 +1,4 @@
-import { ApiCookieAuth, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { ApiBadRequestResponse, ApiBody, ApiCookieAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -61,12 +61,18 @@ export class SpacesController {
 @UseGuards(JwtAuthGuard)
 export class ScenesController {
   constructor(private readonly spatial: SpatialService) {}
-  @ApiOperation({ summary: "Read a scene with its hotspots (owner or assigned member)" })
+  @ApiOperation({ summary: "Read a scene with its hotspots (owner or assigned member)", description: 'Supplies the shared 360° viewer with panoramaUrl, initialYaw, initialPitch, initialFov and NAVIGATION/INFO hotspots. Workspace membership alone does not grant access.' })
   @Get(':sceneId')
   get(@CurrentUser() user: AuthenticatedUser, @Param('sceneId') sceneId: string) {
     return this.spatial.getScene(user.id, sceneId);
   }
-  @ApiOperation({ summary: "Edit scene metadata (OWNER only)" })
+  @ApiOperation({ summary: "Edit scene metadata or starting view (OWNER only)", description: 'Save current view as start sends initialYaw, initialPitch and initialFov in degrees. The field of view is horizontal. This endpoint also updates scene metadata/image URLs; it cannot reassign the project or space.' })
+  @ApiBody({ type: UpdateSceneDto, examples: {
+    startingView: { summary: 'Save the current camera as the starting view', value: { initialYaw: 30, initialPitch: -5, initialFov: 90 } },
+    panorama: { summary: 'Set an equirectangular panorama', value: { panoramaUrl: 'https://images.example.test/living-room-360.jpg' } },
+    clearStartingView: { summary: 'Use the default starting view', value: { initialYaw: null, initialPitch: null, initialFov: null } },
+  } })
+  @ApiForbiddenResponse({ description: 'Only an OWNER of the scene project workspace may change it.' })
   @Patch(':sceneId')
   update(@CurrentUser() user: AuthenticatedUser, @Param('sceneId') sceneId: string, @Body() input: UpdateSceneDto) {
     return this.spatial.updateScene(user.id, sceneId, input);
@@ -77,6 +83,12 @@ export class ScenesController {
     return this.spatial.deleteScene(user.id, sceneId);
   }
   @ApiOperation({ summary: "Create INFO or NAVIGATION hotspot; navigation requires a same-project target (OWNER only)" })
+  @ApiBody({ type: CreateHotspotDto, examples: {
+    info: { summary: 'Place an information hotspot', value: { type: 'INFO', yaw: 120.5, pitch: -4.2, title: 'TV Wall', description: 'Feature wall', targetSceneId: null } },
+    navigation: { summary: 'Link to another scene in this project', value: { type: 'NAVIGATION', yaw: 42.5, pitch: 0, title: 'Kitchen', targetSceneId: '<scene ID from this project>' } },
+  } })
+  @ApiBadRequestResponse({ description: 'Invalid angles or a missing/cross-project navigation target.' })
+  @ApiForbiddenResponse({ description: 'Only the project workspace OWNER can place hotspots.' })
   @Post(':sceneId/hotspots')
   addHotspot(@CurrentUser() user: AuthenticatedUser, @Param('sceneId') sceneId: string, @Body() input: CreateHotspotDto) {
     return this.spatial.createHotspot(user.id, sceneId, input);
@@ -91,6 +103,13 @@ export class ScenesController {
 export class HotspotsController {
   constructor(private readonly spatial: SpatialService) {}
   @ApiOperation({ summary: "Edit a hotspot; target must remain in the same project (OWNER only)" })
+  @ApiBody({ type: UpdateHotspotDto, examples: {
+    move: { summary: 'Move a hotspot using visual placement', value: { yaw: 20, pitch: 5 } },
+    editInfo: { summary: 'Edit information content', value: { title: 'Feature Wall', description: 'Revised description' } },
+    navigation: { summary: 'Change the destination', value: { type: 'NAVIGATION', targetSceneId: '<scene ID from this project>' } },
+  } })
+  @ApiBadRequestResponse({ description: 'The merged hotspot must have valid angles and a same-project target when NAVIGATION.' })
+  @ApiForbiddenResponse({ description: 'Only the project workspace OWNER can edit hotspots.' })
   @Patch(':hotspotId')
   update(@CurrentUser() user: AuthenticatedUser, @Param('hotspotId') hotspotId: string, @Body() input: UpdateHotspotDto) {
     return this.spatial.updateHotspot(user.id, hotspotId, input);
