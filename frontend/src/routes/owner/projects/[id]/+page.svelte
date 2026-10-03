@@ -19,11 +19,16 @@
 	import type { ProjectMember, ProjectStatus, ProjectSummary, UpdateProjectInput } from '$lib/projects/types';
 	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
 	import type { WorkspaceMember, WorkspaceSummary } from '$lib/workspaces/types';
+	import { formatTaskDueDate, listProjectTasks, taskStatusLabel } from '$lib/tasks/api';
+	import type { TaskSummary } from '$lib/tasks/types';
 
 	let { params }: PageProps = $props();
 	let workspace = $state<WorkspaceSummary | null>(null);
 	let availableWorkspaces = $state<WorkspaceSummary[]>([]);
 	let project = $state<ProjectSummary | null>(null);
+	let tasks = $state<TaskSummary[]>([]);
+	let tasksLoading = $state(false);
+	let taskError = $state('');
 	let workspaceMembers = $state<WorkspaceMember[]>([]);
 	let selectedWorkspaceMemberId = $state('');
 	let editing = $state(false);
@@ -63,6 +68,14 @@
 			}
 			workspaceMembers = await apiRequest<WorkspaceMember[]>(`/workspaces/${workspace.id}/members`);
 			fillForm(project);
+			tasksLoading = true;
+			try {
+				tasks = await listProjectTasks(project.id);
+			} catch (cause: unknown) {
+				taskError = cause instanceof ApiError ? cause.message : 'Tasks could not be loaded.';
+			} finally {
+				tasksLoading = false;
+			}
 		} catch (cause: unknown) {
 			error = cause instanceof ApiError ? cause.message : 'Project details could not be loaded.';
 		} finally {
@@ -205,7 +218,7 @@
 			{#if error}<p class="feedback error" role="alert">{error}</p>{/if}
 			{#if notice}<p class="feedback success" role="status">{notice}</p>{/if}
 
-			<nav class="project-sections" aria-label="Project sections"><a href="#overview">Overview</a><a href="#members">Members</a><a href="#virtual-space">Space</a></nav>
+			<nav class="project-sections" aria-label="Project sections"><a href="#overview">Overview</a><a href="#members">Members</a><a href="#tasks">Tasks</a><a href="#virtual-space">Space</a></nav>
 			<section id="overview" class="project-section" aria-labelledby="project-details-heading">
 				<div class="section-heading">
 					<div><p class="eyebrow">Project</p><h2 id="project-details-heading">Details</h2></div>
@@ -271,6 +284,30 @@
 				{/if}
 			</section>
 
+			<section id="tasks" class="project-section" aria-labelledby="tasks-heading">
+				<div class="section-heading">
+					<div><p class="eyebrow">Operations</p><h2 id="tasks-heading">Tasks</h2></div>
+					<a class="primary-button" href={`/owner/projects/${project.id}/tasks/new`}>+ New task</a>
+				</div>
+				{#if tasksLoading}
+					<p class="empty-members" role="status">Loading tasks…</p>
+				{:else if taskError}
+					<p class="empty-members project-error" role="alert">{taskError}</p>
+				{:else if tasks.length === 0}
+					<p class="empty-members">No tasks have been created for this project yet. <a href={`/owner/projects/${project.id}/tasks/new`}>Create first task</a></p>
+				{:else}
+					<div class="task-list">
+						{#each tasks as task (task.id)}
+							<a class="task-row" href={`/tasks/${task.id}`}>
+								<span class="task-main"><strong>{task.title}</strong><small>{task.assignee.name} · {formatTaskDueDate(task.dueDate)}</small></span>
+								<span class={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
+								<span class={`task-status task-${task.status.toLowerCase()}`}>{taskStatusLabel(task.status)}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			</section>
+
 			<VirtualSpace projectId={project.id} editable={workspace.role === 'OWNER'} />
 			<section class="project-section status-section" aria-labelledby="status-heading">
 				<div class="section-heading"><div><p class="eyebrow">Project status</p><h2 id="status-heading">Update status</h2></div></div>
@@ -319,6 +356,18 @@
 	.secondary-button:hover { background: #eeece4; }
 	.primary-button { border: 0; background: #344332; color: #fffefa; }
 	.primary-button:hover { background: #263324; }
+	.task-list { border-top: 1px solid #e5e2d9; }
+	.task-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; min-height: 68px; padding: 11px 4px; border-bottom: 1px solid #e5e2d9; color: inherit; text-decoration: none; }
+	.task-row:hover { background: #f5f3ec; }
+	.task-main { display: grid; gap: 5px; min-width: 0; }
+	.task-main strong { overflow-wrap: anywhere; font-size: 13px; font-weight: 600; }
+	.task-main small { color: #62665d; font-size: 11px; }
+	.task-priority, .task-status { white-space: nowrap; font-size: 10px; font-weight: 650; letter-spacing: .04em; }
+	.priority-high, .priority-urgent { color: #8b4335; }
+	.task-status { padding: 7px 8px; background: #eae9df; color: #465442; }
+	.task-submitted { background: #f3ead8; color: #76582e; }
+	.task-revision_requested { background: #f4e5df; color: #854a3b; }
+	.task-approved { background: #e2ebdf; color: #3d5a3b; }
 	.secondary-button:disabled, .primary-button:disabled, .remove-button:disabled { cursor: wait; opacity: 0.58; }
 	.description { margin: 0 0 21px; color: #4e534a; font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
 	.project-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; padding-top: 18px; border-top: 1px solid #e5e2d9; }

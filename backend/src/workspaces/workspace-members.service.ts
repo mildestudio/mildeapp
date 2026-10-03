@@ -62,6 +62,14 @@ export class WorkspaceMembersService {
 	) {
 		await this.workspaces.requireWorkspaceRole(userId, workspaceId, [WorkspaceRole.OWNER]);
 		const member = await this.findMember(workspaceId, memberId);
+		if (member.role === WorkspaceRole.EMPLOYEE && input.role !== WorkspaceRole.EMPLOYEE) {
+			const assignedTasks = await this.prisma.task.count({
+				where: { assigneeWorkspaceMemberId: member.id },
+			});
+			if (assignedTasks > 0) {
+				throw new ConflictException('Reassign this employee’s tasks before changing their workspace role');
+			}
+		}
 		if (member.role === WorkspaceRole.OWNER && input.role !== WorkspaceRole.OWNER) {
 			await this.ensureAnotherOwnerExists(workspaceId);
 		}
@@ -82,6 +90,19 @@ export class WorkspaceMembersService {
 		await this.workspaces.requireWorkspaceRole(userId, workspaceId, [WorkspaceRole.OWNER]);
 		const member = await this.findMember(workspaceId, memberId);
 		if (member.role === WorkspaceRole.OWNER) await this.ensureAnotherOwnerExists(workspaceId);
+		const protectedTasks = await this.prisma.task.count({
+			where: {
+				workspaceId,
+				OR: [
+					{ assigneeWorkspaceMemberId: member.id },
+					{ createdByWorkspaceMemberId: member.id },
+					{ activities: { some: { actorWorkspaceMemberId: member.id } } },
+				],
+			},
+		});
+		if (protectedTasks > 0) {
+			throw new ConflictException('This member has task assignments or audit history and cannot be removed');
+		}
 		await this.prisma.workspaceMember.delete({ where: { id: member.id } });
 		return { deleted: true };
 	}

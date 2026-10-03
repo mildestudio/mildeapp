@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { ProjectsModule } from './projects/projects.module';
 import { SpatialModule } from './spatial/spatial.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SpatialModule } from './spatial/spatial.module';
     WorkspacesModule,
     ProjectsModule,
     SpatialModule,
+    TasksModule,
   ],
 })
 export class AppModule {}

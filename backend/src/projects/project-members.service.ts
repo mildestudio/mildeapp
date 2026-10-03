@@ -56,6 +56,10 @@ export class ProjectMembersService {
 			select: { id: true },
 		});
 		if (!member) throw new NotFoundException('Project member not found');
+		const assignedTasks = await this.prisma.task.count({ where: { assigneeProjectMemberId: member.id } });
+		if (assignedTasks > 0) {
+			throw new ConflictException('Reassign this member’s tasks before removing them from the project');
+		}
 		await this.prisma.projectMember.delete({ where: { id: member.id } });
 		return { deleted: true };
 	}

@@ -15,6 +15,10 @@ export function getProject(projectId: string): Promise<ProjectSummary> {
 	return apiRequest<ProjectSummary>(`/projects/${projectId}`);
 }
 
+export function listProjectMembers(projectId: string): Promise<ProjectMember[]> {
+	return apiRequest<ProjectMember[]>(`/projects/${projectId}/members`);
+}
+
 export function createProject(
 	workspaceId: string,
 	body: CreateProjectInput

@@ -9,6 +9,7 @@ describe('ProjectMembersService', () => {
 	const prisma = {
 		workspaceMember: { findUnique: jest.fn() },
 		projectMember: { create: jest.fn(), delete: jest.fn(), findFirst: jest.fn() },
+		task: { count: jest.fn() },
 	} as unknown as PrismaService;
 	const projects = { getOwnerProject: jest.fn() } as unknown as ProjectsService;
 	const service = new ProjectMembersService(prisma, projects);

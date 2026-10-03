@@ -9,6 +9,8 @@
 	import type { AuthUser, UserRole } from '$lib/auth/types';
 	import { loadWorkspaces, selectWorkspace, workspaces } from '$lib/workspaces/state';
 	import type { WorkspaceSummary } from '$lib/workspaces/types';
+	import { formatTaskDueDate, listMyTasks, taskStatusLabel } from '$lib/tasks/api';
+	import type { TaskSummary } from '$lib/tasks/types';
 
 	let {
 		role,
@@ -20,6 +22,9 @@
 	let workspace = $state<WorkspaceSummary | null>(null);
 	let availableWorkspaces = $state<WorkspaceSummary[]>([]);
 	let myProjects = $state<ProjectSummary[]>([]);
+	let myTasks = $state<TaskSummary[]>([]);
+	let tasksLoading = $state(false);
+	let taskError = $state('');
 	let projectsLoading = $state(false);
 	let projectError = $state('');
 	let error = $state('');
@@ -56,6 +61,7 @@
 					projectsLoading = false;
 				}
 			}
+			if (role === 'EMPLOYEE') await refreshMyTasks();
 			ready = true;
 		} catch (cause: unknown) {
 			error = cause instanceof Error ? cause.message : 'Workspace access could not be loaded.';
@@ -81,6 +87,19 @@
 			} finally {
 				projectsLoading = false;
 			}
+			if (role === 'EMPLOYEE') await refreshMyTasks();
+		}
+	}
+
+	async function refreshMyTasks(): Promise<void> {
+		tasksLoading = true;
+		taskError = '';
+		try {
+			myTasks = await listMyTasks();
+		} catch (cause: unknown) {
+			taskError = cause instanceof ApiError ? cause.message : 'Tasks could not be loaded.';
+		} finally {
+			tasksLoading = false;
 		}
 	}
 </script>
@@ -130,6 +149,7 @@
 			{#if role === 'OWNER' && workspace}
 				<nav class="owner-links" aria-label="Workspace management">
 					<a class="members-link" href="/owner/projects">Projects</a>
+					<a class="members-link" href="/owner/reviews">Approval Inbox</a>
 					<a class="members-link" href="/owner/members">Team &amp; access</a>
 				</nav>
 			{/if}
@@ -158,6 +178,29 @@
 									</span>
 									<span class={`project-status status-${project.status.toLowerCase()}`}>{projectStatusLabel(project.status)}</span>
 									<span class="project-open">Open <span aria-hidden="true">↗</span></span>
+								</a>
+							{/each}
+						</div>
+					{/if}
+				</section>
+			{/if}
+			{#if role === 'EMPLOYEE' && workspace}
+				<section class="my-projects my-tasks" aria-labelledby="my-tasks-title">
+					<div class="projects-heading">
+						<div><p class="eyebrow">Assigned work</p><h2 id="my-tasks-title">My Tasks</h2></div>
+					</div>
+					{#if tasksLoading}
+						<p class="project-state" role="status">Loading tasks…</p>
+					{:else if taskError}
+						<p class="project-state project-error" role="alert">{taskError}</p>
+					{:else if myTasks.length === 0}
+						<p class="project-state">You don't have any assigned tasks.</p>
+					{:else}
+						<div class="project-list">
+							{#each myTasks as task (task.id)}
+								<a class="project-row task-row" href={`/tasks/${task.id}`}>
+									<span class="project-main"><strong>{task.title}</strong><span>{task.project.name} · {formatTaskDueDate(task.dueDate)}</span></span>
+									<span class={`task-status status-${task.status.toLowerCase()}`}>{taskStatusLabel(task.status)}</span>
 								</a>
 							{/each}
 						</div>
@@ -419,6 +462,12 @@
 	.status-archived { background: #ecebe8; color: #5e615a; }
 	.project-open { color: #53604f; font-size: 12px; white-space: nowrap; }
 	.project-state { margin: 0; padding: 18px 16px; border: 1px solid #deddd3; background: #fffefa; color: #62665d; font-size: 13px; line-height: 1.55; }
+	.my-tasks { margin-top: 34px; }
+	.task-row { grid-template-columns: minmax(0, 1fr) auto; }
+	.task-status { padding: 7px 9px; background: #eae9df; color: #465442; font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+	.task-status.status-submitted { background: #f3ead8; color: #76582e; }
+	.task-status.status-revision_requested { background: #f4e5df; color: #854a3b; }
+	.task-status.status-approved { background: #e2ebdf; color: #3d5a3b; }
 	.project-error { color: #7b332c; }
 
 	.portal-error {
